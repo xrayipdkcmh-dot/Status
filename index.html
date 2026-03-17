@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Google Font: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: white;
+      padding: 18px;
+      border-radius: 16px;
+      box-shadow: 0 6px 25px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+    }
+
+    /* TABLE */
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    th {
+      text-align: left;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 8px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    td {
+      font-size: 14px;
+      padding: 16px 8px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    th:nth-child(1),
+    td:nth-child(1) {
+      padding-right: 16px;
+    }
+
+    th:nth-child(2),
+    td:nth-child(2) {
+      padding-left: 16px;
+    }
+
+    /* PROGRESS BAR (ROW) */
+    .progress-container {
+      background: #e2e8f0;
+      border-radius: 999px;
+      height: 12px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0;
+      transition: width 1s ease;
+    }
+
+    /* TOTAL SECTION */
+    .total-wrapper {
+      margin-top: 20px;
+      position: relative;
+      padding-top: 70px;
+    }
+
+    .total-container {
+      background: #e2e8f0;
+      height: 18px;
+      border-radius: 999px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .total-bar {
+      height: 100%;
+      background: #16a34a;
+      width: 0;
+      transition: width 1s ease;
+    }
+
+    .runner {
+      position: absolute;
+      top: 0;
+      width: 55px;
+      transition: left 1s ease;
+      z-index: 2;
+    }
+
+    .finish {
+      position: absolute;
+      top: 0;
+      width: 55px;
+      right: -5px;
+      z-index: 1;
+    }
+
+    .total-text {
+      text-align: right;
+      margin-top: 10px;
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    /* Loading / Error */
+    .status-msg {
+      text-align: center;
+      color: #94a3b8;
+      font-size: 14px;
+      padding: 20px 0;
+    }
+
+    .error-msg {
+      text-align: center;
+      color: #ef4444;
+      font-size: 14px;
+      padding: 20px 0;
+    }
+
+    /* DESKTOP */
+    @media (min-width: 768px) {
+      body { padding: 50px; }
+      h1 { font-size: 36px; }
+      th { font-size: 18px; }
+      td { font-size: 18px; }
+      .card { padding: 30px; }
+      .progress-container { height: 18px; }
+      .total-container { height: 26px; }
+      .runner, .finish { width: 75px; }
+      .total-text { font-size: 22px; }
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>ความคืบหน้าตารางเวร</h1>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Activity</th>
+        <th>Progression</th>
+        <th>Progress</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody">
+      <tr><td colspan="3" class="status-msg">กำลังโหลดข้อมูล...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="margin:0;font-size:16px;font-weight:600;">Completion</h2>
+
+  <div class="total-wrapper">
+    <img id="runner" class="runner" src="./runner.gif" alt="runner">
+    <img id="finish" class="finish" src="./finish.png" alt="finish">
+
+    <div class="total-container">
+      <div class="total-bar" id="totalBar"></div>
+    </div>
+  </div>
+
+  <div class="total-text" id="totalText"></div>
+</div>
+
+<script>
+  // ===== ตั้งค่า =====
+  const SHEET_ID  = "19jyKjeTzRHKyB5hK2tk4DO3cXjT9Nw5yFJtub1SDakU";
+  const SHEET_NAME = "STATUS";
+
+  // ===== ดึงข้อมูลจาก Google Sheets =====
+  async function loadData() {
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
+
+    try {
+      const res  = await fetch(url);
+      const text = await res.text();
+
+      // Google คืนค่าเป็น JSONP → ตัด prefix/suffix ออก
+      const json = JSON.parse(text.substring(47, text.length - 2));
+      const rows = json.table.rows;
+
+      const data = rows
+        .map(row => ({
+          activity : row.c[0]?.v ?? "",
+          progress : parseProgressValue(row.c[2]?.v)   // คอลัมน์ C = index 2
+        }))
+        .filter(item => item.activity !== "");
+
+      renderData(data);
+
+    } catch (err) {
+      document.getElementById("tableBody").innerHTML =
+        `<tr><td colspan="3" class="error-msg">โหลดข้อมูลไม่สำเร็จ: ${err.message}</td></tr>`;
+      console.error(err);
+    }
+  }
+
+  // ===== แปลงค่า % (รองรับทั้ง decimal 0.75 และตัวเลข 75) =====
+  function parseProgressValue(val) {
+    if (val === null || val === undefined) return 0;
+    let num = parseFloat(val);
+    if (num > 0 && num <= 1) num = num * 100;
+    return isNaN(num) ? 0 : num;
+  }
+
+  // ===== สีของ progress bar =====
+  function getBarColor(progress) {
+    if (progress < 30) return "#facc15";   // เหลือง
+    if (progress < 60) return "#fb923c";   // ส้ม
+    if (progress < 90) return "#2563eb";   // น้ำเงิน
+    return "#16a34a";                      // เขียว
+  }
+
+  // ===== วาดตาราง + total bar =====
+  function renderData(data) {
+    const tbody = document.getElementById("tableBody");
+    tbody.innerHTML = "";
+    let total = 0;
+
+    data.forEach(item => {
+      total += item.progress;
+      const color = getBarColor(item.progress);
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${item.activity}</td>
+        <td>${item.progress.toFixed(2)}%</td>
+        <td>
+          <div class="progress-container">
+            <div class="progress-bar"
+                 style="width:${item.progress}%; background:${color};">
+            </div>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    let average = data.length > 0 ? total / data.length : 0;
+    average = Math.min(average, 100);
+
+    document.getElementById("totalBar").style.width  = average + "%";
+    document.getElementById("totalText").innerText   = average.toFixed(2) + "%";
+    document.getElementById("runner").style.left     = `calc(${average}% - 27px)`;
+  }
+
+  loadData();
+</script>
+
+</body>
+</html>
